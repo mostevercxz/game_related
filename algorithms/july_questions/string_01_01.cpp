@@ -4,6 +4,22 @@
 
 #include <stdlib.h>
 #include <iostream>
+void reverseString(char *s, const unsigned int start, const unsigned int end)
+{
+	if(end <= start)
+	{
+					return;
+	}
+	char temp;
+	for(int i = start, j = end; j > i; ++i, --j)
+	{
+		temp = s[i];
+		s[i] = s[j];
+		s[j] = temp;
+	}
+}
+
+
 void simple_shift(char *array, const unsigned int nLen, const unsigned int moveBits)
 {
 	if(!array || (nLen == 0)){return ;}
@@ -11,23 +27,9 @@ void simple_shift(char *array, const unsigned int nLen, const unsigned int moveB
 	if(moveBits > nLen){return ;}
 	if(nLen == 1){return ;}
 	
-	char *temp = (char*)malloc(moveBits * sizeof(char));
-	int i = 0;
-	for(; i < moveBits; ++i)
-	{
-		temp[i] = array[i];
-	}
-
-	for(; i < nLen; ++i)
-	{
-		array[i-moveBits] = array[i];
-	}
-
-	int j = 0;
-	for(i = i - moveBits; i < nLen; ++i,++j)
-	{
-		array[i] = temp[j];
-	}
+	reverseString(array, 0, moveBits-1);
+	reverseString(array, moveBits, nLen-1);
+	reverseString(array, 0, nLen-1);
 }
 
 int main()
