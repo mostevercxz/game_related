@@ -32,6 +32,26 @@ void simple_shift(char *array, const unsigned int nLen, const unsigned int moveB
 	reverseString(array, 0, nLen-1);
 }
 
+/*
+ * 链表翻转。给出一个链表和一个数k，比如，链表为1→2→3→4→5→6，k=2，则翻转后2→1→6→5→4→3，若k=3，翻转后3→2→1→6→5→4，若k=4，翻转后4→3→2→1→6→5，用程序实现
+ */
+
+template <class T>
+class node{
+				public:
+	T m_value;
+	struct node *m_next;
+};
+
+template <class T>
+class SignlyListManager
+{
+	public:
+					typedef node<T> node_t;
+					node_t *m_head;
+}
+
+
 int main()
 {
 	char temp[] = "abcdefg";
