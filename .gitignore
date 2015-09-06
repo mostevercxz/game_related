@@ -5,6 +5,7 @@
 *.suo
 *.user
 *.sln.docstates
+boost_learning/build/*
 
 # Build results
 [Dd]ebug/
