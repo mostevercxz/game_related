@@ -1,0 +1,23 @@
+#coding:utf-8
+from os.path import expanduser
+import waflib
+from waflib import Logs
+
+home_dir=expanduser("~")
+top = '.'
+out = './build'
+source = ["test_multi_index.cpp",]
+def options(opt):
+    Logs.info("start do options")
+    opt.load('compiler_c')
+    opt.load('compiler_cxx')
+def configure(ctx):
+    Logs.info("start do configure")
+    ctx.load('compiler_c')
+    ctx.load("compiler_cxx")
+    boost_dir=home_dir + "/.vim/bundle/YouCompleteMe/third_party/ycmd/cpp/BoostParts"
+    boost_option = "-I"+boost_dir
+    ctx.env.append_value('CXXFLAGS', ['-g', boost_option])
+
+def build(bld):
+    bld(target="hello", source=source)
