@@ -55,8 +55,8 @@ namespace TCPServer
                         lock(m_handlers)
                         {                            
                             ClientHandler handler = new ClientHandler(client, "the " + m_handlers.Count.ToString() + " client");
-                            m_handlers.Add(handler);
                             handler.Start();
+                            m_handlers.Add(handler);
                         }
                     }
                     else
@@ -65,6 +65,12 @@ namespace TCPServer
                         break;
                     }
                     Thread.Sleep(200);
+                }
+
+                for(int i = 0; i < m_handlers.Count; ++i)
+                {
+                    ClientHandler handler = m_handlers[i];
+                    handler.Stop();
                 }
             }
             catch (Exception e)
@@ -79,7 +85,7 @@ namespace TCPServer
             {
                 lock(m_contentForTextBox)
                 {
-                    textBox1.Text = m_contentForTextBox;
+                    this.SetText(m_contentForTextBox);
                 }
                 Thread.Sleep(50);
             }
@@ -91,10 +97,11 @@ namespace TCPServer
             {
                 lock (m_handlers)
                 {
+                    m_contentForTextBox = "";
                     for (int i = 0; i < m_handlers.Count; ++i)
                     {
                         ClientHandler handler = m_handlers[i];
-                        m_contentForTextBox += handler;
+                        m_contentForTextBox += handler.Content;
                         if(!handler.Alive)
                         {
                             m_handlers.Remove(handler);
@@ -103,6 +110,21 @@ namespace TCPServer
                     }
                 }
                 Thread.Sleep(200);
+            }
+        }
+
+        delegate void SetTextCallBack(string text);
+
+        private void SetText(string text)
+        {
+            if(this.textBox1.InvokeRequired)
+            {
+                SetTextCallBack callback = SetText;
+                this.Invoke(callback, new object[] {text} );
+            }
+            else
+            {
+                this.textBox1.Text = text;
             }
         }
     }
@@ -129,9 +151,18 @@ namespace TCPServer
             }
         }
 
+        public string Content
+        {
+            get
+            {
+                return m_recvContent;
+            }
+        }
+
         public void Start()
         {
             m_clientThread = new Thread(new ThreadStart(Run));
+            m_continueProcess = true;
             m_clientThread.Start();
         }
 
