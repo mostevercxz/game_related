@@ -44,5 +44,8 @@
     <ClCompile Include="wsaevent_single.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="wsaevent_threadpool.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>

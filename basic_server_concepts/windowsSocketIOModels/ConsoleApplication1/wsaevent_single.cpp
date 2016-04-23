@@ -44,7 +44,7 @@ int do_wsaevent_single_thread()
                 // 获取到来的消息通知, WSAEnumNetworkEvents 会自动重置受信事件
                 WSANETWORKEVENTS tmpEvent;
                 ::WSAEnumNetworkEvents(sockArray[i], eventArray[i], &tmpEvent);
-                if (tmpEvent.INetworkEvents & FD_ACCEPT)
+                if (tmpEvent.lNetworkEvents & FD_ACCEPT)
                 {
                     if (tmpEvent.iErrorCode[FD_ACCEPT_BIT] == 0)
                     {
@@ -56,13 +56,13 @@ int do_wsaevent_single_thread()
                         
                         SOCKET sNew = ::accept(sockArray[i], NULL, NULL);
                         WSAEVENT newEvent = ::WSACreateEvent();
-                        ::WSAEventSelect(sNew, newEvent, FD_READ | FD_CLOSED | FD_WRITE);
+                        ::WSAEventSelect(sNew, newEvent, FD_READ | FD_CLOSE | FD_WRITE);
                         sockArray[iEventTotal] = sNew;
                         eventArray[iEventTotal] = newEvent;
                         ++iEventTotal;
                     }
                 }
-                else if(tmpEvent.INetworkEvents & FD_READ)
+                else if(tmpEvent.lNetworkEvents & FD_READ)
                 {
                     if (tmpEvent.iErrorCode[FD_READ_BIT] == 0)
                     {
@@ -75,7 +75,7 @@ int do_wsaevent_single_thread()
                         }
                     }
                 }
-                else if (tmpEvent.INetworkEvents & FD_CLOSE)
+                else if (tmpEvent.lNetworkEvents & FD_CLOSE)
                 {
                     if (tmpEvent.iErrorCode[FD_CLOSE_BIT] == 0)
                     {
@@ -88,7 +88,7 @@ int do_wsaevent_single_thread()
                         --iEventTotal;
                     }
                 }
-                else if (tmpEvent.INetworkEvents & FD_WRITE)
+                else if (tmpEvent.lNetworkEvents & FD_WRITE)
                 {}
             }
         }
