@@ -16,6 +16,7 @@ int do_wsaasync();
 int do_wsaevent_single_thread();
 int do_wsaevent_threadpool();
 int do_overlapped();
+int do_simple_iocp();
 
 class CInitSock
 {
@@ -90,5 +91,19 @@ typedef struct _OVERLAPPED_BUFFER_OBJ
 	_OVERLAPPED_BUFFER_OBJ *m_pNext;
 } OVERLAPPED_BUFFER_OBJ, *POVERLAPPED_BUFFER_OBJ;
 
+
+// simple iocp example
+typedef struct _PER_HANDLE_DATA
+{
+	SOCKET m_socket;
+	sockaddr_in m_clientAddr;
+}PER_HANDLE_DATA, *PPER_HANDLE_DATA;
+
+typedef struct _PER_IO_DATA
+{
+	OVERLAPPED m_overlapped;
+	char m_buff[maxBufferLen];
+	int m_op;
+}PER_IO_DATA, *PPER_IO_DATA;
 
 
