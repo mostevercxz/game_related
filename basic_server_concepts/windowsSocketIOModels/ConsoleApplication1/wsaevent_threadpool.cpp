@@ -6,10 +6,10 @@ PTHREAD_OBJ g_pThreadList;//指向线程链表表头
 CRITICAL_SECTION g_cs;//同步对 g_pThreadList 的读写
 
 								// new a SOCKET_OBJ class and associate the socket with a WSAEvent
-PSOCKET_OBJ NewSocketObj(SOCKET s)
+PEVENT_MULTI_THREAD_SOCKET_OBJ NewSocketObj(SOCKET s)
 {
 	// GPTR 是一个标记,代表分配一块固定大小的内存,将内存memset为0
-	PSOCKET_OBJ pSocket = (PSOCKET_OBJ)::GlobalAlloc(GPTR, sizeof(SOCKET_OBJ));
+	PEVENT_MULTI_THREAD_SOCKET_OBJ pSocket = (PEVENT_MULTI_THREAD_SOCKET_OBJ)::GlobalAlloc(GPTR, sizeof(EVENT_MULTI_THREAD_SOCKET_OBJ));
 	if (pSocket)
 	{
 		pSocket->m_socket = s;
@@ -18,7 +18,7 @@ PSOCKET_OBJ NewSocketObj(SOCKET s)
 	return pSocket;
 }
 
-void FreeSocketObj(PSOCKET_OBJ pSocket)
+void FreeSocketObj(PEVENT_MULTI_THREAD_SOCKET_OBJ pSocket)
 {
 	::CloseHandle(pSocket->m_event);
 	if (pSocket->m_socket != INVALID_SOCKET)
@@ -73,7 +73,7 @@ void FreeThreadObj(PTHREAD_OBJ pThread)
 void RebuildArray(PTHREAD_OBJ pThread)
 {
 	::EnterCriticalSection(&pThread->m_cs);
-	PSOCKET_OBJ pSocketHead = pThread->m_head;
+	PEVENT_MULTI_THREAD_SOCKET_OBJ pSocketHead = pThread->m_head;
 	int n = 1;//从第1个开始写
 	while (pSocketHead)
 	{
@@ -84,9 +84,9 @@ void RebuildArray(PTHREAD_OBJ pThread)
 }
 
 // 根据 index 去线程中找 pSocket,找不到返回 NULL
-PSOCKET_OBJ FindSocketByIndex(PTHREAD_OBJ pThread, int index)
+PEVENT_MULTI_THREAD_SOCKET_OBJ FindSocketByIndex(PTHREAD_OBJ pThread, int index)
 {
-	PSOCKET_OBJ pSocket = pThread->m_head;
+	PEVENT_MULTI_THREAD_SOCKET_OBJ pSocket = pThread->m_head;
 	while (--index)
 	{
 		if (!pSocket)
@@ -99,10 +99,10 @@ PSOCKET_OBJ FindSocketByIndex(PTHREAD_OBJ pThread, int index)
 	return pSocket;
 }
 
-void RemoveSocketObj(PTHREAD_OBJ pThread, PSOCKET_OBJ pSocket)
+void RemoveSocketObj(PTHREAD_OBJ pThread, PEVENT_MULTI_THREAD_SOCKET_OBJ pSocket)
 {
 	::EnterCriticalSection(&pThread->m_cs);
-	PSOCKET_OBJ pHeader = pThread->m_head;
+	PEVENT_MULTI_THREAD_SOCKET_OBJ pHeader = pThread->m_head;
 	if (pHeader == pSocket)
 	{
 		// 如果链表只有1个节点,那么头和尾都要改变
@@ -140,7 +140,7 @@ void RemoveSocketObj(PTHREAD_OBJ pThread, PSOCKET_OBJ pSocket)
 
 
 // 处理IO
-bool HandleIO(PTHREAD_OBJ pThread, PSOCKET_OBJ pSocket)
+bool HandleIO(PTHREAD_OBJ pThread, PEVENT_MULTI_THREAD_SOCKET_OBJ pSocket)
 {
 	// 获得具体的网络事件
 	WSANETWORKEVENTS event;
@@ -223,7 +223,7 @@ DWORD WINAPI ServerThread(LPVOID lpParam)
 				else
 				{
 					// 查找对应的 socket, 并调用对应的数据处理函数
-					PSOCKET_OBJ pSocket = FindSocketByIndex(pThread, i);
+					PEVENT_MULTI_THREAD_SOCKET_OBJ pSocket = FindSocketByIndex(pThread, i);
 					if (!pSocket)
 					{
 						printf("cound not find socket at index %d", i);
@@ -245,7 +245,7 @@ DWORD WINAPI ServerThread(LPVOID lpParam)
 
 // 将 socket 插入到某线程的事件中
 // 上层函数已经为该函数找到一个合适的线程
-void InsertSocketObj(PTHREAD_OBJ pThread, PSOCKET_OBJ pSocket)
+void InsertSocketObj(PTHREAD_OBJ pThread, PEVENT_MULTI_THREAD_SOCKET_OBJ pSocket)
 {
 	// 将 pSocket 插入到 pThread的链表中,个数+1	
 	::EnterCriticalSection(&pThread->m_cs);
@@ -269,7 +269,7 @@ void InsertSocketObj(PTHREAD_OBJ pThread, PSOCKET_OBJ pSocket)
 }
 
 // 将一个套接字安排给一个空余的线程
-void AssignForFreeThread(PSOCKET_OBJ pSocket)
+void AssignForFreeThread(PEVENT_MULTI_THREAD_SOCKET_OBJ pSocket)
 {
 	pSocket->m_pNext = NULL;
 	::EnterCriticalSection(&g_cs);
@@ -352,7 +352,7 @@ int do_wsaevent_threadpool()
 					printf("accept,errorcode=%d", errorCode);
 					break;
 				}
-				PSOCKET_OBJ pSocket = NewSocketObj(acceptRet);
+				PEVENT_MULTI_THREAD_SOCKET_OBJ pSocket = NewSocketObj(acceptRet);
 				pSocket->m_remoteAddr = tmp;
 				::WSAEventSelect(pSocket->m_socket, pSocket->m_event, FD_READ | FD_CLOSE | FD_WRITE);
 				AssignForFreeThread(pSocket);
