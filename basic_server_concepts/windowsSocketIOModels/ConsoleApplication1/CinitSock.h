@@ -10,6 +10,8 @@
 const DWORD maxBufferLen = 1024;
 const USHORT bindPort = 4567;
 #define  WM_SOCKET 104
+#define IOCP_BUFFER_SIZE (1024 * 4)
+#define IOCP_THREAD_NUM 2
 
 int do_select();
 int do_wsaasync();
@@ -107,3 +109,18 @@ typedef struct _PER_IO_DATA
 }PER_IO_DATA, *PPER_IO_DATA;
 
 
+class AutoCritical
+{
+	LPCRITICAL_SECTION m_pCritical;
+
+public:
+	AutoCritical(LPCRITICAL_SECTION p) : m_pCritical(p)
+	{
+		::EnterCriticalSection(m_pCritical);
+	}
+
+	~AutoCritical()
+	{
+		::LeaveCriticalSection(m_pCritical);
+	}
+};
