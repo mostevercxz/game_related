@@ -8,20 +8,21 @@ CIOCPBuffer * CIOCPServer::AllocateBuffer(int iLen)
 		return NULL;
 	}
 
-	::EnterCriticalSection(&m_freeBufferListLock);
-	if (!m_pFreeBufferList)
 	{
-		pBuffer = (CIOCPBuffer *)::HeapAlloc(GetProcessHeap(),
-			HEAP_ZERO_MEMORY, sizeof(CIOCPBuffer) + IOCP_BUFFER_SIZE);
+		AutoCritical tmp(&m_freeBufferListLock);
+		if (!m_pFreeBufferList)
+		{
+			pBuffer = (CIOCPBuffer *)::HeapAlloc(GetProcessHeap(),
+				HEAP_ZERO_MEMORY, sizeof(CIOCPBuffer) + IOCP_BUFFER_SIZE);
+		}
+		else
+		{
+			pBuffer = m_pFreeBufferList;
+			m_pFreeBufferList = m_pFreeBufferList->m_next;
+			pBuffer->m_next = NULL;
+			--m_iFreeBufferCount;
+		}
 	}
-	else
-	{
-		pBuffer = m_pFreeBufferList;
-		m_pFreeBufferList = m_pFreeBufferList->m_next;
-		pBuffer->m_next = NULL;
-		--m_iFreeBufferCount;
-	}
-	::LeaveCriticalSection(&m_freeBufferListLock);
 
 	// intialize m_buff
 	if (pBuffer)
@@ -47,27 +48,28 @@ void CIOCPServer::ReleaseBuffer(CIOCPBuffer *pBuffer)
 	else
 	{
 		::HeapFree(GetProcessHeap(), 0, pBuffer);
-	}	
+	}
 }
 
 CIOCPContext *CIOCPServer::AllocateContext(SOCKET s)
 {
 	CIOCPContext *pContext = NULL;
-	::EnterCriticalSection(&m_freeContextListLock);
-	if (!m_pFreeContextList)
 	{
-		pContext = (CIOCPContext *)::HeapAlloc(GetProcessHeap(),
-			HEAP_ZERO_MEMORY, sizeof(CIOCPContext));
-		::InitializeCriticalSection(pContext->m_lock);
+		AutoCritical tmp(&m_freeContextListLock);
+		if (!m_pFreeContextList)
+		{
+			pContext = (CIOCPContext *)::HeapAlloc(GetProcessHeap(),
+				HEAP_ZERO_MEMORY, sizeof(CIOCPContext));
+			::InitializeCriticalSection(pContext->m_lock);
+		}
+		else
+		{
+			pContext = m_pFreeContextList;
+			m_pFreeContextList = m_pFreeContextList->m_next;
+			pContext->m_next = NULL;
+			--m_iFreeContextCount;
+		}
 	}
-	else
-	{
-		pContext = m_pFreeContextList;
-		m_pFreeContextList = m_pFreeContextList->m_next;
-		pContext->m_next = NULL;
-		--m_iFreeContextCount;
-	}
-	::LeaveCriticalSection(&m_freeContextListLock);
 
 	if (pContext)
 	{
@@ -87,7 +89,7 @@ void CIOCPServer::ReleaseContext(CIOCPContext *pContext)
 	// free the unfinished io buffers on this socket
 	pContext->FreeUnfinishedBuffer(this);
 
-	::EnterCriticalSection(&m_freeContextListLock);
+	AutoCritical tmp(&m_freeContextListLock);
 	if (m_iFreeContextCount < m_iMaxFreeContexts)
 	{
 		CRITICAL_SECTION tmp = pContext->m_lock;
@@ -102,13 +104,13 @@ void CIOCPServer::ReleaseContext(CIOCPContext *pContext)
 		::DeleteCriticalSection(&pContext->m_lock);
 		HeapFree(GetProcessHeap(), 0, pContext);
 	}
-	::LeaveCriticalSection(&m_freeContextListLock);
 }
 
 void CIOCPServer::FreeAllBuffers()
 {
 	// 遍历m_pFreeBufferList空闲列表，释放缓冲区池内存
-	::EnterCriticalSection(&m_freeBufferListLock);
+	AutoCritical tmp(&m_freeBufferListLock);
+
 
 	CIOCPBuffer *pFreeBuffer = m_pFreeBufferList;
 	CIOCPBuffer *pNextBuffer;
@@ -126,14 +128,12 @@ void CIOCPServer::FreeAllBuffers()
 	}
 	m_pFreeBufferList = NULL;
 	m_iFreeBufferCount = 0;
-
-	::LeaveCriticalSection(&m_freeBufferListLock);
 }
 
 void CIOCPServer::FreeAllContexts()
 {
 	// 遍历m_pFreeContextList空闲列表，释放缓冲区池内存
-	::EnterCriticalSection(&m_freeContextListLock);
+	AutoCritical tmp(&m_freeContextListLock);
 
 	CIOCPContext *pFreeContext = m_pFreeContextList;
 	CIOCPContext *pNextContext;
@@ -153,6 +153,134 @@ void CIOCPServer::FreeAllContexts()
 	}
 	m_pFreeContextList = NULL;
 	m_iFreeContextCount = 0;
+}
 
-	::LeaveCriticalSection(&m_freeContextListLock);
+bool CIOCPServer::AddAConnection(CIOCPContext *pContext)
+{
+	//向客户端连接列表添加一个 connection
+	AutoCritical tmp(&m_connectionListLock);
+
+	if (m_iCurrentConnectionNumber < m_iMaxConnectionNumber)
+	{
+		pContext->m_next = m_pConnectionList;
+		m_pConnectionList = pContext;
+		++m_iCurrentConnectionNumber;
+
+		return true;
+	}
+
+	return false;
+}
+
+void CIOCPServer::CloseAConnection(CIOCPContext *pContext)
+{
+	// 先从 context 列表里面移除该 context
+	{
+		AutoCritical tmp(&m_connectionListLock);
+		CIOCPContext *pTemp = m_pConnectionList;
+		if (pTemp == pContext)
+		{
+			m_pConnectionList = pContext->m_next;
+			--m_iCurrentConnectionNumber;
+		}
+		else
+		{
+			while (pTemp && pTemp->m_next != pContext)
+			{
+				pTemp = pTemp->m_next;
+			}
+			if (pTemp)
+			{
+				pTemp->m_next = pContext->m_next;
+				--m_iCurrentConnectionNumber;
+			}
+		}
+	}
+
+	// 关闭客户端套接字
+	AutoCritical tmp(&pContext->m_lock);
+	if (pContext->m_socket != INVALID_SOCKET)
+	{
+		::closesocket(pContext->m_socket);
+		pContext->m_socket = INVALID_SOCKET;
+	}
+	pContext->m_bClosed = true;
+}
+
+void CIOCPServer::CloseAllConnections()
+{
+	AutoCritical tmp(&m_connectionListLock);
+
+	CIOCPContext *pContext = m_pConnectionList;
+	while (pContext)
+	{
+		// 先移除套接字
+		{
+			AutoCritical tmpsocket(&pContext->m_socket);
+			if (pContext->m_socket != INVALID_SOCKET)
+			{
+				::closesocket(pContext->m_socket);
+				pContext->m_socket = INVALID_SOCKET;
+			}
+			pContext->m_bClosed = true;
+		}
+
+		pContext = pContext->m_next;
+	}
+
+	m_pConnectionList = NULL;
+	m_iCurrentConnectionNumber = 0;
+}
+
+void CIOCPServer::InsertingPendingAccept(CIOCPBuffer *pBuffer)
+{
+	// 将一个IO缓冲区对象插入到 列表中
+	AutoCritical tmp(&m_PendingAcceptsLock);
+
+	if (!m_pendingAccepts)
+	{
+		m_pendingAccepts = pBuffer;
+	}
+	else
+	{
+		pBuffer->m_next = m_pendingAccepts;
+		m_pendingAccepts = pBuffer;
+	}
+
+	++m_iPendingAcceptCount;
+}
+
+bool CIOCPServer::RemovePendingAccept(CIOCPBuffer *pBuffer)
+{
+	bool bResult = FALSE;
+
+	// 遍历m_pPendingAccepts表，从中移除pBuffer所指向的缓冲区对象
+	AutoCritical tmp(&m_PendingAcceptsLock);
+
+	CIOCPBuffer *pTest = m_pConnectionList;
+	if (pTest == pBuffer)	// 如果是表头元素
+	{
+		m_pConnectionList = pBuffer->pNext;
+		bResult = TRUE;
+	}
+	else					// 不是表头元素的话，就要遍历这个表来查找了
+	{
+		while (pTest != NULL && pTest->pNext != pBuffer)
+			pTest = pTest->pNext;
+		if (pTest != NULL)
+		{
+			pTest->pNext = pBuffer->pNext;
+			bResult = TRUE;
+		}
+	}
+	// 更新计数
+	if (bResult)
+		--m_iPendingAcceptCount;	
+
+	return  bResult;
+}
+
+CIOCPBuffer * CIOCPServer::GetNextCanReadBuffer(CIOCPContext *pContext, CIOCPBuffer *pBUffer)
+{
+
 }

@@ -50,10 +50,9 @@ public:
 		const int iMaxFreeBuffers = 200, const int iMaxFreeContexts = 100, const int iInitialReads = 4);
 
 	// stop service
-	void Shutdown();
-	void CloseOneConnection(CIOCPContext *pContext);
-	void CloseAllConnections();
-	DWORD GetCurrentConnectionNumber();
+	void Shutdown();	
+	
+	
 
 protected:
 	CIOCPBuffer *AllocateBuffer(int iLen);
@@ -63,6 +62,7 @@ protected:
 	void FreeAllBuffers();
 	void FreeAllContexts();
 
+	// buffer 和 context 相关变量定义
 	CIOCPContext *m_pFreeContextList;
 	CIOCPBuffer *m_pFreeBufferList;
 	int m_iFreeBufferCount;
@@ -71,4 +71,24 @@ protected:
 	int m_iMaxFreeContexts;
 	CRITICAL_SECTION m_freeBufferListLock;
 	CRITICAL_SECTION m_freeContextListLock;
+
+	// 记录连接列表
+	CIOCPContext *m_pConnectionList;
+	int m_iCurrentConnectionNumber;
+	CRITICAL_SECTION m_connectionListLock;
+	int m_iMaxConnectionNumber;
+	bool AddAConnection(CIOCPContext *pContext);
+	void CloseAConnection(CIOCPContext *pContext);
+	void CloseAllConnections();
+	inline DWORD GetCurrentConnectionNumber() { return m_iCurrentConnectionNumber; }
+
+	// 记录抛出的接受请求列表
+	CIOCPBuffer *m_pendingAccepts;
+	long m_iPendingAcceptCount;
+	CRITICAL_SECTION m_PendingAcceptsLock;
+	void InsertingPendingAccept(CIOCPBuffer *pBuffer);
+	bool RemovePendingAccept(CIOCPBuffer *pBuffer);
+
+	// 获得该读的下一个缓冲区对象
+	CIOCPBuffer * GetNextCanReadBuffer(CIOCPContext *pContext, CIOCPBuffer *pBUffer);
 };
