@@ -5,6 +5,8 @@
 #include <mswsock.h>
 #include <vector>
 #include <string.h>
+#include <iosfwd>
+
 #pragma comment(lib, "WS2_32")
 
 const DWORD maxBufferLen = 1024;
@@ -123,4 +125,16 @@ public:
 	{
 		::LeaveCriticalSection(m_pCritical);
 	}
+};
+
+class SimpleLog
+{
+public:
+	SimpleLog(std::ofstream &of);
+	~SimpleLog();
+	void Write(const char *fmt, ...);
+private:
+	std::ofstream &m_file;
+	char m_buff[1024];
+	CRITICAL_SECTION m_critical;
 };
