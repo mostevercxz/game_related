@@ -113,17 +113,17 @@ typedef struct _PER_IO_DATA
 
 class AutoCritical
 {
-	LPCRITICAL_SECTION m_pCritical;
+	CRITICAL_SECTION &m_critical;
 
 public:
-	AutoCritical(LPCRITICAL_SECTION p) : m_pCritical(p)
+	AutoCritical(CRITICAL_SECTION &p) : m_critical(p)
 	{
-		::EnterCriticalSection(m_pCritical);
+		::EnterCriticalSection(&m_critical);
 	}
 
 	~AutoCritical()
 	{
-		::LeaveCriticalSection(m_pCritical);
+		::LeaveCriticalSection(&m_critical);
 	}
 };
 

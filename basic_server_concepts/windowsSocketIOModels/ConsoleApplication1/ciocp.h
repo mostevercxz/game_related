@@ -27,25 +27,16 @@ struct CIOCPContext
 	CRITICAL_SECTION m_lock;
 	CIOCPContext *m_next;
 
-	void FreeUnfinishedBuffer(CIOCPServer *pServer)
-	{
-		CIOCPBuffer *pBuffer = pOutOfOrderReads;
-		while (pOutOfOrderReads)
-		{
-			pBuffer = pOutOfOrderReads->m_next;
-			pServer->ReleaseBuffer(pOutOfOrderReads);
-			pOutOfOrderReads = pBuffer;
-		}
-	}
+	void FreeUnfinishedBuffer(CIOCPServer *pServer);	
 };
 
 class CIOCPServer
-{
+{	
 public:
 	CIOCPServer();
 	~CIOCPServer();
 
-protected:
+public:
 	CIOCPBuffer *AllocateBuffer(int iLen);
 	void ReleaseBuffer(CIOCPBuffer *pBuffer);
 	CIOCPContext *AllocateContext(SOCKET s);
@@ -97,8 +88,8 @@ protected:
 	int m_initialAccepts;
 	int m_initialReads;	
 	bool m_shutDown;//通知监听线程停止服务
-	bool Start(int nPort = 4567, int nMaxConnections = 2000,
-		int nMaxFreeBuffers = 200, int nMaxFreeContexts = 100, int nInitialReads = 4);
+	bool Start(int nPort = 4567, int nMaxConnections = 2,
+		int nMaxFreeBuffers = 2, int nMaxFreeContexts = 100, int nInitialReads = 4);
 	void Shutdown();
 
 	// 一些 handle
@@ -108,7 +99,7 @@ protected:
 	LONG m_repostCount;
 	HANDLE m_hListenThread;
 	LPFN_GETACCEPTEXSOCKADDRS m_lpfnGetAcceptExSockaddrs; // GetAcceptExSockaddrs函数地址
-	void HandleIO(DWORD dwKey, CIOCPBuffer *pBuffer, DWORD dwTrans, int nError);
+	void HandleIO(DWORD dwKey, CIOCPBuffer *pBuffer, DWORD dwTrans, int nError, int threadNumber);
 	bool SendText(CIOCPContext *pContext, char *pszText, int nLen);
 
 	// 事件通知函数
@@ -122,8 +113,44 @@ protected:
 	virtual void OnReadCompleted(CIOCPContext *pContext, CIOCPBuffer *pBuffer);
 	// 一个连接上的写操作完成
 	virtual void OnWriteCompleted(CIOCPContext *pContext, CIOCPBuffer *pBuffer);
+	LONG m_threadNumber;
 
 private:
+	
 	static DWORD WINAPI _ListenThreadProc(LPVOID lpParam);
 	static DWORD WINAPI _WorkerThreadProc(LPVOID lpParam);
+};
+
+
+class CMyServer : public CIOCPServer
+{
+public:
+
+	void OnConnectionEstablished(CIOCPContext *pContext, CIOCPBuffer *pBuffer)
+	{
+		char ip[16] = { 0 };
+		inet_ntop(AF_INET, (void*)&pContext->m_remoteAddr.sin_addr, ip, sizeof(ip));
+		printf(" 接收到一个新的连接（%d）： %s \n", GetCurrentConnectionNumber(), ip);
+
+		SendText(pContext, pBuffer->m_buff, pBuffer->m_iLen);
+	}
+
+	void OnConnectionClosing(CIOCPContext *pContext, CIOCPBuffer *pBuffer)
+	{		
+	}
+
+	void OnConnectionError(CIOCPContext *pContext, CIOCPBuffer *pBuffer, int nError)
+	{
+		printf(" 一个连接发生错误： %d \n ", nError);
+	}
+
+	void OnReadCompleted(CIOCPContext *pContext, CIOCPBuffer *pBuffer)
+	{
+		SendText(pContext, pBuffer->m_buff, pBuffer->m_iLen);
+	}
+
+	void OnWriteCompleted(CIOCPContext *pContext, CIOCPBuffer *pBuffer)
+	{
+		printf(" 数据发送成功！\n ");
+	}
 };

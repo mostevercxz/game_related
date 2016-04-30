@@ -15,7 +15,7 @@ SimpleLog::~SimpleLog()
 
 void SimpleLog::Write(const char *fmt, ...)
 {
-	AutoCritical tmp(&m_critical);
+	AutoCritical tmp(m_critical);
 	memset(m_buff, 0, sizeof(m_buff));
 	va_list ap;
 	va_start(ap, fmt);
@@ -27,21 +27,33 @@ void SimpleLog::Write(const char *fmt, ...)
 std::ofstream out("debug.txt", std::ofstream::out | std::ofstream::app);
 SimpleLog g_log(out);
 
+
+void CIOCPContext::FreeUnfinishedBuffer(CIOCPServer *pServer)
+{
+	CIOCPBuffer *pBuffer = pOutOfOrderReads;
+	while (pOutOfOrderReads)
+	{
+		pBuffer = pOutOfOrderReads->m_next;
+		pServer->ReleaseBuffer(pOutOfOrderReads);
+		pOutOfOrderReads = pBuffer;
+	}
+}
+
 CIOCPServer::CIOCPServer() : m_pFreeContextList(NULL)
 , m_pFreeBufferList(NULL)
 , m_iFreeBufferCount(0)
 , m_iFreeContextCount(0)
-, m_iMaxFreeBuffers(0)
-, m_iMaxFreeContexts(0)
+, m_iMaxFreeBuffers(200)
+, m_iMaxFreeContexts(100)
 , m_pConnectionList(NULL)
 , m_iCurrentConnectionNumber(0)
-, m_iMaxConnectionNumber(0)
+, m_iMaxConnectionNumber(2000)
 , m_pendingAccepts(NULL)
 , m_iPendingAcceptCount(0)
 , m_sListen(INVALID_SOCKET)
 , m_lpfnAcceptEx(NULL)
-, m_iMaxSendNumber(0)
-, m_iMaxAcceptsNumber(0)
+, m_iMaxSendNumber(20)
+, m_iMaxAcceptsNumber(100)
 , m_iPort(bindPort)
 , m_initialAccepts(10)
 , m_initialReads(4)
@@ -51,7 +63,8 @@ CIOCPServer::CIOCPServer() : m_pFreeContextList(NULL)
 , m_hRepostEvent(NULL)
 , m_repostCount(0)
 , m_hListenThread(NULL)
-
+, m_lpfnGetAcceptExSockaddrs(NULL)
+, m_threadNumber(0)
 {
 	::InitializeCriticalSection(&m_freeBufferListLock);
 	::InitializeCriticalSection(&m_freeContextListLock);
@@ -63,8 +76,17 @@ CIOCPServer::CIOCPServer() : m_pFreeContextList(NULL)
 
 CIOCPServer::~CIOCPServer()
 {
+	if (m_sListen != INVALID_SOCKET)
+		::closesocket(m_sListen);
+	if (m_hListenThread != NULL)
+		::CloseHandle(m_hListenThread);
 	::CloseHandle(m_hAcceptEvent);
 	::CloseHandle(m_hRepostEvent);
+	::DeleteCriticalSection(&m_freeBufferListLock);
+	::DeleteCriticalSection(&m_freeContextListLock);
+	::DeleteCriticalSection(&m_connectionListLock);
+	::DeleteCriticalSection(&m_PendingAcceptsLock);
+	::WSACleanup();
 }
 
 CIOCPBuffer * CIOCPServer::AllocateBuffer(int iLen)
@@ -76,7 +98,7 @@ CIOCPBuffer * CIOCPServer::AllocateBuffer(int iLen)
 	}
 
 	{
-		AutoCritical tmp(&m_freeBufferListLock);
+		AutoCritical tmp(m_freeBufferListLock);
 		if (!m_pFreeBufferList)
 		{
 			pBuffer = (CIOCPBuffer *)::HeapAlloc(GetProcessHeap(),
@@ -104,7 +126,7 @@ CIOCPBuffer * CIOCPServer::AllocateBuffer(int iLen)
 
 void CIOCPServer::ReleaseBuffer(CIOCPBuffer *pBuffer)
 {
-	AutoCritical tmp(&m_freeBufferListLock);
+	AutoCritical tmp(m_freeBufferListLock);
 	if (m_iFreeBufferCount <= m_iMaxFreeBuffers)
 	{
 		memset(pBuffer, 0, sizeof(CIOCPBuffer) + IOCP_BUFFER_SIZE);
@@ -122,12 +144,12 @@ CIOCPContext *CIOCPServer::AllocateContext(SOCKET s)
 {
 	CIOCPContext *pContext = NULL;
 	{
-		AutoCritical tmp(&m_freeContextListLock);
+		AutoCritical tmp(m_freeContextListLock);
 		if (!m_pFreeContextList)
 		{
 			pContext = (CIOCPContext *)::HeapAlloc(GetProcessHeap(),
 				HEAP_ZERO_MEMORY, sizeof(CIOCPContext));
-			::InitializeCriticalSection(pContext->m_lock);
+			::InitializeCriticalSection(&pContext->m_lock);
 		}
 		else
 		{
@@ -148,6 +170,11 @@ CIOCPContext *CIOCPServer::AllocateContext(SOCKET s)
 
 void CIOCPServer::ReleaseContext(CIOCPContext *pContext)
 {
+	AutoCritical tmp(m_freeContextListLock);
+	if (!pContext)
+	{
+		return;
+	}
 	if (pContext->m_socket != INVALID_SOCKET)
 	{
 		::closesocket(pContext->m_socket);
@@ -156,7 +183,7 @@ void CIOCPServer::ReleaseContext(CIOCPContext *pContext)
 	// free the unfinished io buffers on this socket
 	pContext->FreeUnfinishedBuffer(this);
 
-	AutoCritical tmp(&m_freeContextListLock);
+	
 	if (m_iFreeContextCount < m_iMaxFreeContexts)
 	{
 		CRITICAL_SECTION tmp = pContext->m_lock;
@@ -170,13 +197,14 @@ void CIOCPServer::ReleaseContext(CIOCPContext *pContext)
 	{
 		::DeleteCriticalSection(&pContext->m_lock);
 		HeapFree(GetProcessHeap(), 0, pContext);
+		pContext = NULL;
 	}
 }
 
 void CIOCPServer::FreeAllBuffers()
 {
 	// 遍历m_pFreeBufferList空闲列表，释放缓冲区池内存
-	AutoCritical tmp(&m_freeBufferListLock);
+	AutoCritical tmp(m_freeBufferListLock);
 
 
 	CIOCPBuffer *pFreeBuffer = m_pFreeBufferList;
@@ -187,7 +215,7 @@ void CIOCPServer::FreeAllBuffers()
 		if (!::HeapFree(::GetProcessHeap(), 0, pFreeBuffer))
 		{
 #ifdef _DEBUG
-			::OutputDebugString("  FreeBuffers释放内存出错！");
+			::OutputDebugString(L"  FreeBuffers释放内存出错！");
 #endif // _DEBUG
 			break;
 		}
@@ -200,7 +228,7 @@ void CIOCPServer::FreeAllBuffers()
 void CIOCPServer::FreeAllContexts()
 {
 	// 遍历m_pFreeContextList空闲列表，释放缓冲区池内存
-	AutoCritical tmp(&m_freeContextListLock);
+	AutoCritical tmp(m_freeContextListLock);
 
 	CIOCPContext *pFreeContext = m_pFreeContextList;
 	CIOCPContext *pNextContext;
@@ -212,7 +240,7 @@ void CIOCPServer::FreeAllContexts()
 		if (!::HeapFree(::GetProcessHeap(), 0, pFreeContext))
 		{
 #ifdef _DEBUG
-			::OutputDebugString("  FreeBuffers释放内存出错！");
+			::OutputDebugString(L"  FreeBuffers释放内存出错！");
 #endif // _DEBUG
 			break;
 		}
@@ -225,7 +253,7 @@ void CIOCPServer::FreeAllContexts()
 bool CIOCPServer::AddAConnection(CIOCPContext *pContext)
 {
 	//向客户端连接列表添加一个 connection
-	AutoCritical tmp(&m_connectionListLock);
+	AutoCritical tmp(m_connectionListLock);
 
 	if (m_iCurrentConnectionNumber < m_iMaxConnectionNumber)
 	{
@@ -243,7 +271,7 @@ void CIOCPServer::CloseAConnection(CIOCPContext *pContext)
 {
 	// 先从 context 列表里面移除该 context
 	{
-		AutoCritical tmp(&m_connectionListLock);
+		AutoCritical tmp(m_connectionListLock);
 		CIOCPContext *pTemp = m_pConnectionList;
 		if (pTemp == pContext)
 		{
@@ -265,7 +293,7 @@ void CIOCPServer::CloseAConnection(CIOCPContext *pContext)
 	}
 
 	// 关闭客户端套接字
-	AutoCritical tmp(&pContext->m_lock);
+	AutoCritical tmp(pContext->m_lock);
 	if (pContext->m_socket != INVALID_SOCKET)
 	{
 		::closesocket(pContext->m_socket);
@@ -276,14 +304,14 @@ void CIOCPServer::CloseAConnection(CIOCPContext *pContext)
 
 void CIOCPServer::CloseAllConnections()
 {
-	AutoCritical tmp(&m_connectionListLock);
+	AutoCritical tmp(m_connectionListLock);
 
 	CIOCPContext *pContext = m_pConnectionList;
 	while (pContext)
 	{
 		// 先移除套接字
 		{
-			AutoCritical tmpsocket(&pContext->m_socket);
+			AutoCritical tmpsocket(pContext->m_lock);
 			if (pContext->m_socket != INVALID_SOCKET)
 			{
 				::closesocket(pContext->m_socket);
@@ -302,7 +330,7 @@ void CIOCPServer::CloseAllConnections()
 void CIOCPServer::InsertingPendingAccept(CIOCPBuffer *pBuffer)
 {
 	// 将一个IO缓冲区对象插入到 列表中
-	AutoCritical tmp(&m_PendingAcceptsLock);
+	AutoCritical tmp(m_PendingAcceptsLock);
 
 	if (!m_pendingAccepts)
 	{
@@ -322,21 +350,21 @@ bool CIOCPServer::RemovePendingAccept(CIOCPBuffer *pBuffer)
 	bool bResult = FALSE;
 
 	// 遍历m_pPendingAccepts表，从中移除pBuffer所指向的缓冲区对象
-	AutoCritical tmp(&m_PendingAcceptsLock);
+	AutoCritical tmp(m_PendingAcceptsLock);
 
-	CIOCPBuffer *pTest = m_pConnectionList;
+	CIOCPBuffer *pTest = m_pendingAccepts;
 	if (pTest == pBuffer)	// 如果是表头元素
 	{
-		m_pConnectionList = pBuffer->pNext;
+		m_pendingAccepts = pBuffer->m_next;
 		bResult = TRUE;
 	}
 	else					// 不是表头元素的话，就要遍历这个表来查找了
 	{
-		while (pTest != NULL && pTest->pNext != pBuffer)
-			pTest = pTest->pNext;
+		while (pTest != NULL && pTest->m_next != pBuffer)
+			pTest = pTest->m_next;
 		if (pTest != NULL)
 		{
-			pTest->pNext = pBuffer->pNext;
+			pTest->m_next = pBuffer->m_next;
 			bResult = TRUE;
 		}
 	}
@@ -427,7 +455,7 @@ bool CIOCPServer::PostRecv(CIOCPContext *pContext, CIOCPBuffer *pBuffer)
 {
 	pBuffer->m_op = OP_READ;
 
-	AutoCritical tmp(&pContext->m_lock);
+	AutoCritical tmp(pContext->m_lock);
 
 	// 设置序列号
 	pBuffer->m_iSequenceNumber = pContext->m_iReadSequence;
@@ -480,7 +508,7 @@ bool CIOCPServer::PostSend(CIOCPContext *pContext, CIOCPBuffer *pBuffer)
 		}
 	}
 
-	AutoCritical tmp(&pContext->m_lock);
+	AutoCritical tmp(pContext->m_lock);
 	++pContext->m_iOutstandingSendNumber;
 
 	return true;
@@ -491,7 +519,8 @@ bool CIOCPServer::Start(int nPort, int nMaxConnections, int nMaxFreeBuffers, int
 	m_iPort = nPort;
 	m_iMaxConnectionNumber = nMaxConnections;
 	m_iMaxFreeBuffers = nMaxFreeBuffers;
-	m_iFreeContextCount = nMaxFreeContexts;
+	m_iMaxFreeContexts = nMaxFreeContexts;
+	// m_iFreeContextCount = nMaxFreeContexts;//加这一行是为了查宕机问题而已,加锁之后多次释放的问题已解决。
 	m_initialReads = nInitialReads;
 
 	m_sListen = ::WSASocket(AF_INET, SOCK_STREAM, 0, NULL, 0, WSA_FLAG_OVERLAPPED);
@@ -688,7 +717,7 @@ DWORD WINAPI CIOCPServer::_ListenThreadProc(LPVOID lpParam)
 DWORD WINAPI CIOCPServer::_WorkerThreadProc(LPVOID lpParam)
 {
 #ifdef _DEBUG
-	::OutputDebugString("	WorkerThread 启动... \n");
+	::OutputDebugString(L"	WorkerThread 启动... \n");
 #endif // _DEBUG
 
 	CIOCPServer *pThis = (CIOCPServer*)lpParam;
@@ -697,6 +726,8 @@ DWORD WINAPI CIOCPServer::_WorkerThreadProc(LPVOID lpParam)
 	ULONG dwKey;
 	DWORD dwTrans;
 	LPOVERLAPPED lpol;
+	int my_threadNumber = pThis->m_threadNumber;
+	::InterlockedIncrement(&pThis->m_threadNumber);
 	while (TRUE)
 	{
 		// 在关联到此完成端口的所有套节字上等待I/O完成
@@ -706,7 +737,7 @@ DWORD WINAPI CIOCPServer::_WorkerThreadProc(LPVOID lpParam)
 		if (dwTrans == -1) // 用户通知退出
 		{
 #ifdef _DEBUG
-			::OutputDebugString("	WorkerThread 退出 \n");
+			::OutputDebugString(L"	WorkerThread 退出 \n");
 #endif // _DEBUG
 			::ExitThread(0);
 		}
@@ -731,12 +762,12 @@ DWORD WINAPI CIOCPServer::_WorkerThreadProc(LPVOID lpParam)
 			{
 				nError = ::WSAGetLastError();
 			}
-		}
-		pThis->HandleIO(dwKey, pBuffer, dwTrans, nError);
+		}		
+		pThis->HandleIO(dwKey, pBuffer, dwTrans, nError, my_threadNumber);
 	}
 
 #ifdef _DEBUG
-	::OutputDebugString("	WorkerThread 退出 \n");
+	::OutputDebugString(L"	WorkerThread 退出 \n");
 #endif // _DEBUG
 	return 0;
 }
@@ -753,19 +784,21 @@ bool CIOCPServer::SendText(CIOCPContext *pContext, char *pszText, int nLen)
 	return FALSE;
 }
 
-void CIOCPServer::HandleIO(DWORD dwKey, CIOCPBuffer *pBuffer, DWORD dwTrans, int nError)
+void CIOCPServer::HandleIO(DWORD dwKey, CIOCPBuffer *pBuffer, DWORD dwTrans, int nError, int threadNumber)
 {
 	CIOCPContext *pContext = (CIOCPContext *)dwKey;
 
 #ifdef _DEBUG
-	::OutputDebugString("	HandleIO... \n");
+	::OutputDebugString(L"	HandleIO... \n");
 #endif // _DEBUG
 
+	printf("thread %d handle io,pContext%s,buffer op=%d,dwTrans=%u,error=%d\n",
+		threadNumber, pContext ? "非空" : "为空", pBuffer->m_op, dwTrans, nError);
 	// 1）首先减少套节字上的未决I/O计数
 	if (pContext != NULL)
 	{
 		{
-			AutoCritical tmp(&pContext->Lock);
+			AutoCritical tmp(pContext->m_lock);
 
 			if (pBuffer->m_op == OP_READ)
 			{
@@ -780,11 +813,11 @@ void CIOCPServer::HandleIO(DWORD dwKey, CIOCPBuffer *pBuffer, DWORD dwTrans, int
 		// 2）检查套节字是否已经被我们关闭
 		if (pContext->m_bClosed)
 		{
-#ifdef _DEBUG
-			::OutputDebugString("	检查到套节字已经被我们关闭 \n");
-#endif // _DEBUG
+			printf("thread %d 检测到套接字%d已被关闭,未决 recv=%u,未决 send=%u,释放buffer\n"
+				, threadNumber, pContext->m_socket, pContext->m_iOutstandingRecvNumber, pContext->m_iOutstandingSendNumber);
 			if (pContext->m_iOutstandingRecvNumber == 0 && pContext->m_iOutstandingSendNumber == 0)
 			{
+				printf("thread %d 释放 context\n", threadNumber);
 				ReleaseContext(pContext);
 			}
 			// 释放已关闭套节字的未决I/O
@@ -809,7 +842,7 @@ void CIOCPServer::HandleIO(DWORD dwKey, CIOCPBuffer *pBuffer, DWORD dwTrans, int
 				ReleaseContext(pContext);
 			}
 #ifdef _DEBUG
-			::OutputDebugString("	检查到客户套节字上发生错误 \n");
+			::OutputDebugString(L"	检查到客户套节字上发生错误 \n");
 #endif // _DEBUG
 		}
 		else // 在监听套节字上发生错误，也就是监听套节字处理的客户出错了
@@ -821,7 +854,7 @@ void CIOCPServer::HandleIO(DWORD dwKey, CIOCPBuffer *pBuffer, DWORD dwTrans, int
 				pBuffer->m_socketClient = INVALID_SOCKET;
 			}
 #ifdef _DEBUG
-			::OutputDebugString("	检查到监听套节字上发生错误 \n");
+			::OutputDebugString(L"	检查到监听套节字上发生错误 \n");
 #endif // _DEBUG
 		}
 
@@ -836,10 +869,10 @@ void CIOCPServer::HandleIO(DWORD dwKey, CIOCPBuffer *pBuffer, DWORD dwTrans, int
 		if (dwTrans == 0)
 		{
 #ifdef _DEBUG
-			::OutputDebugString("	监听套节字上客户端关闭 \n");
+			::OutputDebugString(L"	监听套节字上客户端关闭 \n");
 #endif // _DEBUG
 
-			if (pBuffer->sClim_socketClientent != INVALID_SOCKET)
+			if (pBuffer->m_socketClient != INVALID_SOCKET)
 			{
 				::closesocket(pBuffer->m_socketClient);
 				pBuffer->m_socketClient = INVALID_SOCKET;
@@ -918,6 +951,8 @@ void CIOCPServer::HandleIO(DWORD dwKey, CIOCPBuffer *pBuffer, DWORD dwTrans, int
 			pBuffer->m_iLen = 0;
 			OnConnectionClosing(pContext, pBuffer);
 			// 再关闭连接
+			printf(" thread %d 关闭连接，未决recv=%d,未决send=%u！ \n"
+				, threadNumber, pContext->m_iOutstandingRecvNumber, pContext->m_iOutstandingSendNumber);
 			CloseAConnection(pContext);
 			// 释放客户上下文和缓冲区对象
 			if (pContext->m_iOutstandingRecvNumber == 0 && pContext->m_iOutstandingSendNumber == 0)
@@ -928,7 +963,7 @@ void CIOCPServer::HandleIO(DWORD dwKey, CIOCPBuffer *pBuffer, DWORD dwTrans, int
 		}
 		else
 		{
-			pBuffer->nLen = dwTrans;
+			pBuffer->m_iLen = dwTrans;
 			// 按照I/O投递的顺序读取接收到的数据
 			CIOCPBuffer *p = GetNextCanReadBuffer(pContext, pBuffer);
 			while (p != NULL)

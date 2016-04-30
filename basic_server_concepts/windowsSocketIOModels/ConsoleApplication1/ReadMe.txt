@@ -1,3 +1,6 @@
+m_iMaxFreeContexts = nMaxFreeContexts;
+m_iFreeContextCount = nMaxFreeContexts; 会宕机,RelaseContext加锁后问题得到解决
+
 ========================================================================
     CONSOLE APPLICATION : ConsoleApplication1 Project Overview
 ========================================================================
