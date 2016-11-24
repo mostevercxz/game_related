@@ -15,7 +15,8 @@ RUN apt-get install libc6-dev -y
 RUN ln -s /usr/include/x86_64-linux-gnu/sys/ /usr/include/sys
 RUN ln -s /usr/include/x86_64-linux-gnu/gnu/ /usr/include/gnu
 RUN ln -s /usr/include/x86_64-linux-gnu/bits/ /usr/include/bits
-RUN apt-get install make gcc g++ gdb libmysql++-dev git vim -y
+# lbzip2 是为了tar -xf安装的
+RUN apt-get install make gcc g++ gdb libmysql++-dev git vim lbzip2 -y
 # add user myuser and git clone mygit
 RUN useradd -ms /bin/bash myuser
 RUN echo myuser:myuser | /usr/sbin/chpasswd
