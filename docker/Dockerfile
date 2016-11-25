@@ -17,6 +17,9 @@ RUN ln -s /usr/include/x86_64-linux-gnu/gnu/ /usr/include/gnu
 RUN ln -s /usr/include/x86_64-linux-gnu/bits/ /usr/include/bits
 # lbzip2 是为了tar -xf安装的
 RUN apt-get install make gcc g++ gdb libmysql++-dev git vim lbzip2 -y
+# 防止中文乱码
+RUN locale-gen en_US.UTF-8
+ENV LANG='en_US.UTF-8' LANGUAGE='en_US:en' LC_ALL='en_US.UTF-8'
 # add user myuser and git clone mygit
 RUN useradd -ms /bin/bash myuser
 RUN echo myuser:myuser | /usr/sbin/chpasswd
@@ -38,7 +41,7 @@ RUN git clone git@192.168.96.241:mygit.git
 USER root
 # 摘自官方ssh示例,尝试过自己写,但是没卵用
 RUN apt-get install -y openssh-server
-RUN mkdir /var/run/sshd
+RUN mkdir -p /var/run/sshd
 RUN sed -i 's/PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
 # SSH login fix. Otherwise user is kicked off after login
 RUN sed 's@session\s*required\s*pam_loginuid.so@session optional pam_loginuid.so@g' -i /etc/pam.d/sshd
