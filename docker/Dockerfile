@@ -25,7 +25,7 @@ WORKDIR /home/myuser
 RUN echo "export KBE_CONFIG=\"Debug64\"" >> .bashrc
 RUN mkdir .ssh
 RUN ssh-keyscan 192.168.96.241 >> .ssh/known_hosts
-ADD ssh1_info/ .ssh/
+ADD ssh_info/ .ssh/
 USER root
 RUN chmod 600 .ssh/id_rsa
 RUN chmod 644 .ssh/id_rsa.pub
