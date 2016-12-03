@@ -15,8 +15,8 @@ RUN apt-get install libc6-dev -y
 RUN ln -s /usr/include/x86_64-linux-gnu/sys/ /usr/include/sys
 RUN ln -s /usr/include/x86_64-linux-gnu/gnu/ /usr/include/gnu
 RUN ln -s /usr/include/x86_64-linux-gnu/bits/ /usr/include/bits
-# lbzip2 是为了tar -xf安装的
-RUN apt-get install make gcc g++ gdb libmysql++-dev git vim lbzip2 -y
+# lbzip2 是为了tar -xf安装的,python is for compiling python
+RUN apt-get install make gcc g++ gdb libmysql++-dev git vim lbzip2 lsof python -y
 # 防止中文乱码
 RUN locale-gen en_US.UTF-8
 ENV LANG='en_US.UTF-8' LANGUAGE='en_US:en' LC_ALL='en_US.UTF-8'
@@ -26,6 +26,7 @@ RUN echo myuser:myuser | /usr/sbin/chpasswd
 USER myuser
 WORKDIR /home/myuser
 RUN echo "export KBE_CONFIG=\"Debug64\"" >> .bashrc
+RUN echo -e "set nu\nset tabstop=4\nset shiftwidth=4\nset cursorline\nset autoindent\nset hlsearch\nset ignorecase" >> .vimrc
 RUN mkdir .ssh
 RUN ssh-keyscan 192.168.96.241 >> .ssh/known_hosts
 ADD ssh_info/ .ssh/
