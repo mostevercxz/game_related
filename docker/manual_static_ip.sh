@@ -1,5 +1,5 @@
 #/bin/bash
-# 用法: ./manual_static_ip.sh 8b877cfe9c92 192.168.96.14 24 192.168.96.1 test
+# 用法: 先docker ps,查看容器ID,再 ./manual_static_ip.sh 8b877cfe9c92 192.168.96.14 24 192.168.96.1 test
 if [ -z $1 ] || [ -z $2 ] || [ -z $3 ] || [ -z $4 ] || [ -z $5 ];
 then
         echo "*****Input the necessary parameters: CONTAINERID IP MASK GATEWAY ETHNAME"

@@ -21,12 +21,14 @@ RUN apt-get install make gcc g++ gdb libmysql++-dev git vim lbzip2 lsof python -
 RUN locale-gen en_US.UTF-8
 ENV LANG='en_US.UTF-8' LANGUAGE='en_US:en' LC_ALL='en_US.UTF-8'
 # add user myuser and git clone mygit
+# 临时增加一个 user,防止 kb 的 userid 冲突,导致广播到另一个网段的服务器
+RUN useradd -ms /bin/bash tempuser
 RUN useradd -ms /bin/bash myuser
 RUN echo myuser:myuser | /usr/sbin/chpasswd
 USER myuser
 WORKDIR /home/myuser
 RUN echo "export KBE_CONFIG=\"Debug64\"" >> .bashrc
-RUN echo -e "set nu\nset tabstop=4\nset shiftwidth=4\nset cursorline\nset autoindent\nset hlsearch\nset ignorecase" >> .vimrc
+RUN echo "set nu\nset tabstop=4\nset shiftwidth=4\nset cursorline\nset autoindent\nset hlsearch\nset ignorecase" >> .vimrc
 RUN mkdir .ssh
 RUN ssh-keyscan 192.168.96.241 >> .ssh/known_hosts
 ADD ssh_info/ .ssh/
@@ -38,6 +40,7 @@ RUN chgrp myuser .ssh/*
 USER myuser
 # Avoid first connection host confirmation, if pot is not 22
 # RUN ssh-keyscan -p2200 your.git.server.tld > /root/.ssh/known_hosts
+RUN ssh-keyscan 192.168.96.241 > /home/myuser/.ssh/known_hosts
 RUN git clone git@192.168.96.241:mygit.git
 USER root
 # 摘自官方ssh示例,尝试过自己写,但是没卵用
