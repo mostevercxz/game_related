@@ -11,12 +11,14 @@ RUN apt-get install net-tools -y
 # 先后顺序不能变,因为安装 libc6-dev 会卸载 gcc g++
 RUN apt-get install libc6-dev -y
 # In ubuntu server ,you should install libc6-dev-amd64, ubuntu server 上尽量安装 libc6-dev-amd64,这样只安装64位头文件
-#RUN apt-get install libc6-dev-amd64 -y
+#RUN apt-get install libc6-dev-amd64 -y,16.04 上安装 libc6-dev 时候会自动选择64位的包来安装
 RUN ln -s /usr/include/x86_64-linux-gnu/sys/ /usr/include/sys
 RUN ln -s /usr/include/x86_64-linux-gnu/gnu/ /usr/include/gnu
 RUN ln -s /usr/include/x86_64-linux-gnu/bits/ /usr/include/bits
 # lbzip2 是为了tar -xf安装的,python is for compiling python
-RUN apt-get install make gcc g++ gdb libmysql++-dev git vim lbzip2 lsof python -y
+# ctags 是为了方便查看单个文件内的所有函数
+# apport 是为了宕机时候能生成文件
+RUN apt-get install make gcc g++ gdb libmysql++-dev git vim lbzip2 lsof python ctags apport -y
 # 防止中文乱码
 RUN locale-gen en_US.UTF-8
 ENV LANG='en_US.UTF-8' LANGUAGE='en_US:en' LC_ALL='en_US.UTF-8'
@@ -27,8 +29,12 @@ RUN useradd -ms /bin/bash myuser
 RUN echo myuser:myuser | /usr/sbin/chpasswd
 USER myuser
 WORKDIR /home/myuser
+RUN mkdir -p /home/myuser/.vim/github
+RUN cd /home/myuser/.vim/github
+RUN git clone https://github.com/skywind3000/vim.git
 RUN echo "export KBE_CONFIG=\"Debug64\"" >> .bashrc
-RUN echo "set nu\nset tabstop=4\nset shiftwidth=4\nset cursorline\nset autoindent\nset hlsearch\nset ignorecase" >> .vimrc
+RUN echo "set nu\nset tabstop=4\nset shiftwidth=4\nset cursorline\nset autoindent\nset hlsearch\nset ignorecase\n" >> .vimrc
+RUN echo "source ~/.vim/github/vim/asc.vim\nsource ~/.vim/github/vim/skywind.vim\n" >> .vimrc
 RUN mkdir .ssh
 RUN ssh-keyscan 192.168.96.241 >> .ssh/known_hosts
 ADD ssh_info/ .ssh/
