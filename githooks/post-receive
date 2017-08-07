@@ -1,0 +1,53 @@
+#!/bin/bash
+echo "arg1="$0
+TRAGET="/tmp/planeapp"
+GIT_DIR="/home/git/planeapp.git"
+SCP_USERNAME=aaa
+SCP_HOST=yourhost
+SCP_ROOT=/home/username/website
+
+while read oldrev newrev ref
+do
+	if [[ $ref = refs/heads/master ]];
+	then
+		commiter=$(git log -1 --pretty=format:'%cn' $newrev)
+		sha1=$(git log -1 --pretty=format:'%h' $newrev)
+		body=$(git log -1 --pretty=format:'%b' $newrev)
+		echo "收到来自 "$commiter" 的客户端提交,hash="$sha1",提交内容="$body"开始上传至web服务器"
+		git --work-tree=$TRAGET --git-dir=$GIT_DIR checkout -f
+		git log --oneline -1 --name-only $newrev | grep Plane.apk
+		if [ $? -eq 0 ]
+		then
+			echo "检测到apk提交,开始上传apk"
+			scp $TRAGET/Plane.apk $SCP_USERNAME@$SCP_HOST:$SCP_ROOT/Pak
+		else
+			echo "未检测到apk提交,无需上传"
+		fi
+		git log --oneline -1 --name-only $newrev | grep Plane.ipa
+		if [ $? -eq 0 ]
+		then
+			echo "检测到ipa提交,开始上传ipa"
+			scp $TRAGET/Plane.ipa $SCP_USERNAME@$SCP_HOST:$SCP_ROOT/Pak
+		else
+			echo "未检测到ipa提交,无需上传"
+		fi
+		git log --oneline -1 --name-only $newrev | grep Android
+		if [ $? -eq 0 ]
+		then
+			echo "检测到Android资源变动,开始上传"
+			scp -prq $TRAGET/Android/. $SCP_USERNAME@$SCP_HOST:$SCP_ROOT/Android
+		else
+			echo "未检测到Android资源变动,无需上传"
+		fi
+		git log --oneline -1 --name-only $newrev | grep IOS
+		if [ $? -eq 0 ]
+		then
+			echo "检测到Ios资源变动,开始上传"
+			scp -prq $TRAGET/IOS/. $SCP_USERNAME@$SCP_HOST:$SCP_ROOT/IOS
+		else
+			echo "未检测到Ios资源变动,无需上传"
+		fi
+	else
+		echo "Ref $ref received. Doing nothing: only the ${BRANCH} branch may be deployed on this server."
+	fi
+done
