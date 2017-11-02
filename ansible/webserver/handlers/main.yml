@@ -1,0 +1,6 @@
+---
+# handlers file for webserver
+- name: restart php7-fpm on centos
+  service: name=php-fpm enabled=yes state=restarted
+- name: Start nginx
+  service: name=nginx enabled=yes state=reloaded

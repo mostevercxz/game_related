@@ -1,0 +1,26 @@
+---
+# defaults file for webserver
+# 安装php常用模块
+php_timezone: "Asia/Shanghai"
+php_upload_max_filesize: "20M"
+php_post_max_size: "20M"
+php_memory_limit: "1024M"
+
+yum_php_packages:
+  - php71w-common
+  - php71w-cli
+  - php71w-gd
+  - php71w-gd
+  - php71w-gd
+  - php71w-xml
+  - php71w-fpm
+  - php71w-pear
+  - php71w-pecl-redis
+  - php71w-mysqlnd
+  - php71w-pecl-mongodb
+  - php71w-pecl-redis
+  - php71w-opcache
+
+# 添加nginx是给php7.1-fpm增加读取web目录的权限
+php_owner: nginx
+php_group: nginx

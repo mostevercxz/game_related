@@ -1,0 +1,9 @@
+---
+- name: Configure app server(s)
+  hosts: ali
+  remote_user: giant
+  become: yes
+  become_user: root
+
+  roles:
+    - { role: webserver }
