@@ -15,7 +15,15 @@
   notify: restart php7-fpm on centos
 
 - name: Enable socket listen
-  lineinfile: "dest=/etc/php-fpm.d/www.conf state=present regexp='^;?listen = /run/php-fpm/www.sock' line='listen = /run/php-fpm/www.sock'"
+  lineinfile: "dest=/etc/php-fpm.d/www.conf state=present regexp='^;?listen = /run/php-fpm/www.sock' line='listen = {{fast_cgi_sock_file}}'"
+  notify: restart php7-fpm on centos
+
+- name: 将php-fpm的owner由apache改为nginx
+  lineinfile: "dest=/etc/php-fpm.d/www.conf state=present regexp='^user' line='user = {{ php_owner }}'"
+  notify: restart php7-fpm on centos
+
+- name: 将php-fpm的group由apache改为nginx
+  lineinfile: "dest=/etc/php-fpm.d/www.conf state=present regexp='^group' line='group = {{ php_group }}'"
   notify: restart php7-fpm on centos
 
 - name: Set permissions on socket - owner

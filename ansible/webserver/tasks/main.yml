@@ -1,5 +1,6 @@
 ---
 # tasks file for webserver
+- include: create_user.yml
 - name: Install epel from remote repo on CentOS 6
   yum: name=https://dl.fedoraproject.org/pub/epel/epel-release-latest-6.noarch.rpm state=present
   when: ansible_distribution_major_version == "6"
@@ -12,9 +13,7 @@
 - name: Install webstatic on CentOS 7
   yum: name=https://mirror.webtatic.com/yum/el7/webtatic-release.rpm state=present
   when: ansible_distribution_major_version == "7"
-- name: Install nginx
-  yum: name=nginx state=installed update_cache=true
-  notify: Start nginx
+- include: nginx-centos.yml
 # Install PHP7 packages.
 - name: Install PHP Packages
   yum: name={{ item }} state=present
@@ -22,5 +21,3 @@
   when: yum_php_packages is defined
   notify: restart php7-fpm on centos
 - include: php-fpm-centos.yml
-- name: restart nginx
-  service: name=nginx state=started

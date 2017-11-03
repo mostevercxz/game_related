@@ -3,4 +3,6 @@
 - name: restart php7-fpm on centos
   service: name=php-fpm enabled=yes state=restarted
 - name: Start nginx
-  service: name=nginx enabled=yes state=reloaded
+  service: name=nginx state=started
+- name: Reload nginx
+  service: name=nginx state=reloaded

@@ -24,3 +24,13 @@ yum_php_packages:
 # 添加nginx是给php7.1-fpm增加读取web目录的权限
 php_owner: nginx
 php_group: nginx
+
+domain: example.com
+ssl_crt: '/etc/letsencrypt/live/{{domain}}/fullchain.pem'
+ssl_key: '/etc/letsencrypt/live/{{domain}}/privkey.pem'
+website_root: '/var/www/{{domain}}/public'
+fast_cgi_sock_file: /var/run/php-fpm.sock
+username: giant
+# 使用下面代码生成:
+# python -c 'import crypt; print crypt.crypt("this is my password", "$1$SomeSalt$")'
+password: asdjaiojio

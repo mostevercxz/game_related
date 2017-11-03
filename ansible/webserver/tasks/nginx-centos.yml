@@ -1,0 +1,70 @@
+- name: 安装nginx
+  yum:
+    name: nginx
+    state: installed
+    update_cache: true
+  notify:
+  - Start nginx
+- name: 将本地nginx.conf拷贝至服务器
+  copy:
+    src: nginx.conf
+    dest: /etc/nginx
+    owner: root
+    group: root
+    backup: true
+- name: 拷贝先进的h5bp nginx配置到服务器
+  copy:
+    src: h5bp
+    dest: /etc/nginx
+    owner: root
+    group: root
+- name: 确保ssl证书目录存在
+  file:
+    path: '{{ssl_crt|dirname}}'
+    state: directory
+    mode: 0755
+- name: 拷贝ssl证书至目标目录
+  copy:
+    src: '{{item}}'
+    dest: '{{ssl_crt|dirname}}/{{item}}'
+    mode: 0777
+    owner: root
+    group: root
+  with_items:
+      - fullchain.pem
+      - privkey.pem
+- name: 确保/etc/nginx/sites-enabled/和/etc/nginx/sites-available目录存在
+  file:
+    path: '{{item}}'
+    state: directory
+    mode: 0755
+  with_items:
+      - /etc/nginx/sites-enabled
+      - /etc/nginx/sites-available
+- name: 将域名对应的nginx配置拷贝到服务器
+  template:
+    src: gif5.j2
+    dest: '/etc/nginx/sites-available/{{domain}}.conf'
+    owner: root
+    group: root
+    mode: 0777
+- name: 创建软链接
+  file:
+    src: '/etc/nginx/sites-available/{{ domain }}.conf'
+    dest: '/etc/nginx/sites-enabled/{{ domain }}.conf'
+    state: link
+- name: 创建网站根目录
+  file:
+    path: '{{website_root}}'
+    mode: 0755
+    state: directory
+    owner: nginx
+    group: nginx
+- name: 将网站文件拷贝到网站根目录
+  copy:
+    src: www-files/
+    dest: '{{website_root}}'
+    owner: nginx
+    group: nginx
+  notify:
+  - Reload nginx
