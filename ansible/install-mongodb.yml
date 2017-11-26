@@ -1,0 +1,50 @@
+- hosts: companydb
+  remote_user: root
+  #become: yes
+  #become_user: root
+  vars:
+  # 配置mongodb创建用户需要的参数
+  - admin_user_name: admin
+  - admin_user_password: somepass
+  - create_db: plane
+  - user_name: plane
+  - user_password: plane2017
+  - bind_ip: 172.29.203.1
+  - data_dir: /var/lib/mongo
+  tasks:
+  - name: 将阿里源配置,拷贝到服务器
+    copy:
+      src: ali_centos.repo
+      dest: /etc/yum.repos.d/CentOS7-Base.repo
+      owner: root
+      group: root
+  - name: 将mongo源配置,拷贝到服务器
+    copy:
+      src: mongodb.repo
+      dest: /etc/yum.repos.d
+      owner: root
+      group: root
+  - name: 安装mongodb
+    yum: name=mongodb-org state=installed
+  - name: 修改mongodb bindIp
+    lineinfile:
+      path: /etc/mongod.conf
+      state: present
+      backrefs: yes
+      regexp: '^(.*)bindIp: .*'
+      line: '\1bindIp: {{bind_ip}}'
+  - name: 修改mongodb dbPath,必须加 backrefs正则表达式capture group才能展开
+    lineinfile:
+      path: /etc/mongod.conf
+      state: present
+      backrefs: yes
+      regexp: '^(.*)dbPath: .*'
+      line: '\1dbPath: {{data_dir}}'
+  - name: 确保mongod运行
+    service: name=mongod state=started
+  - name: 创建mongodb admin user
+    shell: mongo {{bind_ip}}:27017 --eval "db.getSiblingDB('admin').createUser( { user:'{{admin_user_name}}',pwd:'{{admin_user_password}}',roles:['root'] })"
+  - name: 创建mongodb user
+    shell: mongo {{bind_ip}}:27017 --eval "db.getSiblingDB('{{create_db}}').createUser( { user:'{{user_name}}',pwd:'{{user_password}}',roles:['readWrite'] })"
+  - name: 重启mongodb
+    service: name=mongod state=restarted
