@@ -11,7 +11,7 @@
     #insertafter: '^root\tALL=(ALL)\tALL'
     backup: yes
     block: "{{username}} ALL=(ALL) NOPASSWD:ALL"
-    marker: "{mark} 自定义sudo组"
+    marker: "#{mark} 自定义sudo组"
 - name: 将本地的公钥id_rsa.pub拷贝到目标服务器
   authorized_key:
     user: "{{username}}"
