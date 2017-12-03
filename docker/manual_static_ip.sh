@@ -1,5 +1,6 @@
 #/bin/bash
 # 用法: 先docker ps,查看容器ID,再 ./manual_static_ip.sh 8b877cfe9c92 192.168.96.14 24 192.168.96.1 test
+# root 运行, 运行前请先确保自己安装 sudo apt-get install bridge-utils ,否则会提示 cannot find device br0 failed to bring up br0
 if [ -z $1 ] || [ -z $2 ] || [ -z $3 ] || [ -z $4 ] || [ -z $5 ];
 then
         echo "*****Input the necessary parameters: CONTAINERID IP MASK GATEWAY ETHNAME"
