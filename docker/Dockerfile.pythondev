@@ -1,0 +1,57 @@
+# todo, ~/.bashrc ~/.bash_profile ~/.vimrc ~/.gdbinit 等文件也应该用同一份
+FROM ubuntu:17.04
+MAINTAINER cxz
+# Avoid ERROR: invoke-rc.d: policy-rc.d denied execution of start.
+RUN echo "#!/bin/sh\nexit 0" > /usr/sbin/policy-rc.d
+RUN echo 'root:password' | chpasswd
+# 设置下环境变量,省得出现如下警告
+# debconf: unable to initialize frontend: Dialog
+# debconf: (TERM is not set, so the dialog frontend is not usable.)
+ENV DEBIAN_FRONTEND noninteractive
+# 安装 apt-utils,省得出现如下警告:
+# debconf: delaying package configuration, since apt-utils is not installed
+RUN apt-get update && apt-get install -y --no-install-recommends apt-utils
+# install ifconfig command
+# 先后顺序不能变,因为安装 libc6-dev 会卸载 gcc g++
+RUN apt-get install net-tools libc6-dev -y
+# In ubuntu server ,you should install libc6-dev-amd64, ubuntu server 上尽量安装 libc6-dev-amd64,这样只安装64位头文件
+#RUN apt-get install libc6-dev-amd64 -y,16.04 上安装 libc6-dev 时候会自动选择64位的包来安装
+#RUN ln -s /usr/include/x86_64-linux-gnu/sys/ /usr/include/sys
+#RUN ln -s /usr/include/x86_64-linux-gnu/gnu/ /usr/include/gnu
+#RUN ln -s /usr/include/x86_64-linux-gnu/bits/ /usr/include/bits
+# 安装neovim会用到的python库
+#RUN apt-get install python python3 python-dev python-pip python3-dev python3-pip -y
+# 添加 add-apt-repository命令,用来添加PPA
+RUN apt-get install software-properties-common -y
+# lbzip2 是为了tar -xf安装的,python is for compiling python
+# ctags 是为了方便查看单个文件内的所有函数
+# apport 是为了宕机时候能生成文件
+#RUN apt-get install make gcc g++ gdb libmysql++-dev git vim lbzip2 lsof python ctags apport -y
+RUN apt-get install make cmake git lbzip2 lsof ctags apport wget curl -y
+RUN add-apt-repository ppa:neovim-ppa/stable -y
+RUN apt-get update
+RUN apt-get install neovim -y
+# 防止中文乱码
+RUN apt-get install locales -y
+RUN locale-gen en_US.UTF-8
+ENV LANG='en_US.UTF-8' LANGUAGE='en_US:en' LC_ALL='en_US.UTF-8'
+# add user giant and git clone mygit
+RUN useradd -ms /bin/bash giant
+RUN echo giant:giant | /usr/sbin/chpasswd
+# 安装据说是全宇宙最快的 rigrep
+RUN cd /tmp && \
+wget https://github.com/BurntSushi/ripgrep/releases/download/0.7.1/ripgrep-0.7.1-x86_64-unknown-linux-musl.tar.gz && \
+tar -xf ripgrep-0.7.1-x86_64-unknown-linux-musl.tar.gz && \
+mv ripgrep-0.7.1-x86_64-unknown-linux-musl/rg /bin/rg && \
+rm -rf ripgrep-0.7.1-x86_64-unknown-linux-musl*
+USER giant
+# 将 clang 5.0下载到 ~/3party 目录下
+RUN mkdir ~/3party && cd ~/3party && \
+wget http://releases.llvm.org/5.0.0/clang+llvm-5.0.0-linux-x86_64-ubuntu14.04.tar.xz && \
+tar -xf clang+llvm-5.0.0-linux-x86_64-ubuntu14.04.tar.xz && \
+mv clang+llvm-5.0.0-linux-x86_64-ubuntu14.04 clang && \
+rm clang+llvm-5.0.0-linux-x86_64-ubuntu14.04.tar.xz && \
+echo "export PATH=/home/giant/3party/clang/bin:\$PATH" >> ~/.bashrc && \
+echo "export LD_LIBRARY_PATH=/home/giant/3party/clang/lib:\$LD_LIBRARY_PATH" >> ~/.bashrc && \
+echo "ulimit -c unlimited" >> ~/.bashrc && \
+echo "alias vi='nvim'" >> ~/.bashrc
